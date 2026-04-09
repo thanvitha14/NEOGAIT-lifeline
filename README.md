@@ -44,13 +44,14 @@ If a fall is detected, a voice alert confirms the user’s condition, and if the
 - NEO-6M GPS Module
 - ISD1820 Voice Recording Module
 - 5V Buzzer
-- Push Button (Normally Open)
+- Rocket switch 
 - 9V Battery / Power Bank
 - Jumper Wires (Male to Female)
 - Walking Stick / PVC Pipe
 
 ## Software Requirements
 - Arduino IDE Version: 1.8.19 or newer
+- pushbullet App
 
 ## Board Package
 - ESP32 by Espressif Systems (version 2.0.14 or newer)
