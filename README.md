@@ -1,2 +1,2 @@
 # NEOGAIT-lifeline
-IoT-based smart cane for fall detection, health monitoring, and emergency SOS alerts using ESP32, GPS, and biometric sensors.
+An IoT-based smart cane with fall detection, health monitoring, SOS alerts, and voice guidance in local languages—enhancing safety and accessibility for all.
