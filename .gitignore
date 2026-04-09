@@ -1,0 +1,63 @@
+# Arduino .gitignore template
+
+# Compiled files
+*.elf
+*.hex
+*.bin
+*.eep
+*.lst
+*.sym
+*.d
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# Build directories
+build/
+build-*/
+*/build/
+*/build-*/
+
+# IDE files
+*.ino.preproc
+*.ino.cpp
+*.ino.with_bootloader
+*.ino.elf
+*.ino.hex
+*.ino.eep
+*.ino.lst
+*.ino.sym
+*.ino.d
+*.ino.o
+*.ino.a
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.pio-build/
+
+# Temporary files
+*~
+*.swp
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Sensitive configuration files (YOUR API KEYS!)
+config.h
+secrets.h
+credentials.h
+*.key
+*.pem
+
+# Backup files
+*.backup
+*.old
+*.orig
+
+# Logs
+*.log
