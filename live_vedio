@@ -1,0 +1,180 @@
+#include <Wire.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+#include <MAX30105.h>
+#include <heartRate.h>
+#include <TinyGPS++.h>
+#include <BleKeyboard.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+#define BOTtoken "8625832950:AAFj0jPh0C47JvpuWzRaokrP4AXwvrQs4w8"
+#define CHAT_ID "7597859857"
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
+
+// Pins
+const int BUZZER_PIN = 18;
+const int VOICE_PIN = 19;
+const int BUTTON_PIN = 5;
+const int MPU_ADDR = 0x68;
+
+#define RXD2 16
+#define TXD2 17
+
+const char* ssid = "Galaxy A35 5G 969A";
+const char* password = "password";
+
+float FALL_THRESHOLD = 2.5;
+
+// Objects
+TinyGPSPlus gps;
+MAX30105 particleSensor;
+BleKeyboard bleKeyboard("NeoGait-LifeLine");
+
+// BPM
+const byte RATE_SIZE = 4;
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+long lastBeat = 0;
+int beatAvg = 0;
+
+void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+  Serial.begin(115200);
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
+
+  bleKeyboard.begin();
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(VOICE_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected!");
+
+  client.setInsecure();
+
+  Wire.begin(21, 22);
+
+  // MPU6050
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x6B);
+  Wire.write(0);
+  Wire.endTransmission();
+
+  // Heart sensor
+  if (particleSensor.begin(Wire, I2C_SPEED_FAST)) {
+    particleSensor.setup();
+    particleSensor.setPulseAmplitudeRed(0x24);
+    particleSensor.setPulseAmplitudeIR(0x24);
+  }
+
+  Serial.println("SYSTEM READY");
+}
+
+void loop() {
+  while (Serial2.available()) gps.encode(Serial2.read());
+
+  long irValue = particleSensor.getIR();
+  if (checkForBeat(irValue)) {
+    long delta = millis() - lastBeat;
+    lastBeat = millis();
+    float bpm = 60 / (delta / 1000.0);
+
+    if (bpm < 220 && bpm > 40) {
+      rates[rateSpot++] = (byte)bpm;
+      rateSpot %= RATE_SIZE;
+
+      beatAvg = 0;
+      for (byte x = 0; x < RATE_SIZE; x++) beatAvg += rates[x];
+      beatAvg /= RATE_SIZE;
+    }
+  }
+
+  // MPU
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDR, 6);
+
+  if (Wire.available() >= 6) {
+    int16_t x = Wire.read() << 8 | Wire.read();
+    int16_t y = Wire.read() << 8 | Wire.read();
+    int16_t z = Wire.read() << 8 | Wire.read();
+
+    float acc = sqrt(pow(x / 16384.0, 2) +
+                     pow(y / 16384.0, 2) +
+                     pow(z / 16384.0, 2));
+
+    if (acc > FALL_THRESHOLD) {
+      Serial.println("FALL DETECTED!");
+      handleFallSequence();
+    }
+  }
+
+  delay(10);
+}
+
+void handleFallSequence() {
+  digitalWrite(VOICE_PIN, HIGH);
+  delay(1000);
+  digitalWrite(VOICE_PIN, LOW);
+
+  unsigned long start = millis();
+  bool safe = false;
+
+  while (millis() - start < 15000) {
+    digitalWrite(BUZZER_PIN, millis() % 500 < 250);
+
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      safe = true;
+      break;
+    }
+    delay(5);
+  }
+
+  digitalWrite(BUZZER_PIN, LOW);
+
+  if (!safe) {
+    sendAlert();
+  } else {
+    Serial.println("SAFE - ALERT CANCELLED");
+  }
+}
+
+void sendAlert() {
+  Serial.println("SENDING SOS...");
+
+  // Bluetooth trigger
+  if (bleKeyboard.isConnected()) {
+    bleKeyboard.write(KEY_MEDIA_NEXT_TRACK);
+    Serial.println("Bluetooth Trigger Sent!");
+  }
+
+  String lat = gps.location.isValid() ? String(gps.location.lat(), 6) : "Unknown";
+  String lng = gps.location.isValid() ? String(gps.location.lng(), 6) : "Unknown";
+  String mapUrl = "https://www.google.com/maps?q=" + lat + "," + lng;
+
+  String msg = "EMERGENCY! Fall detected\n";
+  msg += "Heart Rate: " + String(beatAvg) + " BPM\n";
+  msg += "Location: " + mapUrl;
+
+  if (WiFi.status() == WL_CONNECTED) {
+    if (bot.sendMessage(CHAT_ID, msg, "")) {
+      Serial.println("Telegram Sent Successfully!");
+    } else {
+      Serial.println("Telegram Failed!");
+    }
+  }
+}
